@@ -1,0 +1,10 @@
+streamlit
+pillow
+numpy
+scikit-learn
+scikit-image
+opencv-python
+coloraide
+
+
+pip install streamlit pillow numpy scikit-learn scikit-image opencv-python coloraide
