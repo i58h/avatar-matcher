@@ -26,17 +26,6 @@ def handle_animated_image(image, image_type="الصورة"):
     except:
         return image.convert("RGB")
 
-def analyze_image_quality(image):
-    try:
-        img = np.array(image.convert("L"))
-        laplacian_var = np.var(filters.laplace(img))
-        sharpness_score = min(100, laplacian_var / 50)
-        contrast = np.std(img)
-        contrast_score = min(100, contrast / 2)
-        return (sharpness_score + contrast_score) / 2
-    except:
-        return 50
-
 def get_weighted_palette(image, n_colors=5):
     try:
         image = image.convert("RGB")
@@ -182,26 +171,31 @@ if uploaded_avatar:
     )
 
     if uploaded_banners:
-        with st.spinner("جاري المقارنة..."):
-            time.sleep(0.5)
-            banner_matches = find_banners_for_avatar(avatar_palette, uploaded_banners)
+        st.success(f"✅ تم إضافة {len(uploaded_banners)} بنر")
         
-        if st.session_state.gif_count > 0:
-            st.info(f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
-            st.session_state.gif_count = 0
+        st.markdown("---")
+        
+        if st.button("🔍 ابدأ البحث عن البنر المناسب", use_container_width=True, type="primary"):
+            with st.spinner("جاري المقارنة..."):
+                time.sleep(0.5)
+                banner_matches = find_banners_for_avatar(avatar_palette, uploaded_banners)
+            
+            if st.session_state.gif_count > 0:
+                st.info(f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
+                st.session_state.gif_count = 0
 
-        if banner_matches:
-            st.markdown("---")
-            st.markdown("### 🏆 أفضل البنرات المتناسقة")
+            if banner_matches:
+                st.markdown("---")
+                st.markdown("### 🏆 أفضل البنرات المتناسقة")
 
-            cols = st.columns(3)
-            for i, match in enumerate(banner_matches[:6]):
-                with cols[i % 3]:
-                    st.image(match['image'], use_container_width=True)
-                    st.caption(f"📄 {match['filename']}")
-                    st.caption(f"⭐ التناسق: {match['score']:.1f}%")
-        else:
-            st.error("❌ لم يتم العثور على بنرات متناسقة")
+                cols = st.columns(3)
+                for i, match in enumerate(banner_matches[:6]):
+                    with cols[i % 3]:
+                        st.image(match['image'], use_container_width=True)
+                        st.caption(f"📄 {match['filename']}")
+                        st.caption(f"⭐ التناسق: {match['score']:.1f}%")
+            else:
+                st.error("❌ لم يتم العثور على بنرات متناسقة")
 
 elif st.session_state.get('gif_count', 0) > 0:
     st.session_state.gif_count = 0
