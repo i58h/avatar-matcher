@@ -8,19 +8,16 @@ from skimage.color import rgb2hsv
 import warnings
 from datetime import datetime
 import time
-import cv2
 from coloraide import Color
 
 warnings.filterwarnings('ignore')
 
 st.set_page_config(layout="wide", page_title="مطابقة الأفاتار مع البنرات", page_icon="🎨")
 
-# تهيئة session state لتتبع التحذيرات
 if 'gif_warning_shown' not in st.session_state:
     st.session_state.gif_warning_shown = False
 if 'gif_count' not in st.session_state:
     st.session_state.gif_count = 0
-
 
 def handle_animated_image(image, image_type="الصورة"):
     try:
@@ -31,20 +28,16 @@ def handle_animated_image(image, image_type="الصورة"):
     except:
         return image.convert("RGB")
 
-
-def analyze_with_opencv(image):
+def analyze_image_quality(image):
     try:
-        img = np.array(image)
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+        img = np.array(image.convert("L"))
+        laplacian_var = np.var(filters.laplace(img))
         sharpness_score = min(100, laplacian_var / 50)
-        contrast = np.std(gray)
+        contrast = np.std(img)
         contrast_score = min(100, contrast / 2)
         return (sharpness_score + contrast_score) / 2
     except:
         return 50
-
 
 def get_weighted_palette(image, n_colors=5):
     try:
@@ -73,7 +66,6 @@ def get_weighted_palette(image, n_colors=5):
     except:
         return get_palette_basic(image, 5)
 
-
 def get_palette_basic(image, n_colors=5):
     image = image.convert("RGB")
     img = image.resize((150, 150))
@@ -88,20 +80,16 @@ def get_palette_basic(image, n_colors=5):
     palette.sort(key=lambda x: x[1], reverse=True)
     return palette
 
-
 def rgb_to_hex(color):
     return '#%02x%02x%02x' % tuple(color)
-
 
 def color_distance(c1, c2):
     c1_arr = np.array(c1) if isinstance(c1, tuple) else c1
     c2_arr = np.array(c2) if isinstance(c2, tuple) else c2
     return np.linalg.norm(c1_arr - c2_arr)
 
-
 def get_color_temperature(color):
     return (color[0] - color[2]) / 255
-
 
 def get_color_vibrance(color):
     r, g, b = color[0] / 255, color[1] / 255, color[2] / 255
@@ -110,7 +98,6 @@ def get_color_vibrance(color):
     if max_rgb == 0:
         return 0
     return (max_rgb - min_rgb) / max_rgb
-
 
 def enhanced_palette_match(palette1, palette2):
     total_score = 0
@@ -135,7 +122,6 @@ def enhanced_palette_match(palette1, palette2):
 
     return total_score / total_weight if total_weight > 0 else 0
 
-
 def find_banners_for_avatar(avatar_palette, banners_folder):
     matches = []
     supported = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
@@ -145,7 +131,6 @@ def find_banners_for_avatar(avatar_palette, banners_folder):
 
     files = [f for f in os.listdir(banners_folder) if f.lower().endswith(supported)]
 
-    # إعادة تعيين عداد الـ GIF قبل البحث
     st.session_state.gif_count = 0
 
     for file in files:
@@ -170,7 +155,6 @@ def find_banners_for_avatar(avatar_palette, banners_folder):
     matches.sort(key=lambda x: x['score'], reverse=True)
     return matches
 
-
 def save_combo(avatar, banner, banners_folder, avatar_filename):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     avatar_name = os.path.splitext(avatar_filename)[0]
@@ -186,7 +170,6 @@ def save_combo(avatar, banner, banners_folder, avatar_filename):
 
     return output_folder
 
-
 st.title("🎨 مطابقة الأفاتار مع البنرات")
 
 st.markdown("### 📤 ارفع أفاتارك")
@@ -199,9 +182,8 @@ uploaded_avatar = st.file_uploader(
 )
 
 if uploaded_avatar:
-    # إعادة تعيين التحذيرات عند رفع أفاتار جديد
     st.session_state.gif_warning_shown = False
-
+    
     avatar = Image.open(uploaded_avatar)
     avatar = handle_animated_image(avatar, "الأفاتار")
     avatar_palette = get_weighted_palette(avatar)
@@ -230,11 +212,9 @@ if uploaded_avatar:
         with st.spinner("جاري البحث عن بنرات مناسبة..."):
             time.sleep(0.5)
             banner_matches = find_banners_for_avatar(avatar_palette, banners_folder)
-
-        # عرض رسالة توضيحية عن الـ GIF
+        
         if st.session_state.gif_count > 0:
-            st.info(
-                f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
+            st.info(f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
 
         if banner_matches:
             st.markdown("---")
