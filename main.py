@@ -14,8 +14,6 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(layout="wide", page_title="مطابقة الأفاتار مع البنرات", page_icon="🎨")
 
-if 'gif_warning_shown' not in st.session_state:
-    st.session_state.gif_warning_shown = False
 if 'gif_count' not in st.session_state:
     st.session_state.gif_count = 0
 
@@ -122,31 +120,21 @@ def enhanced_palette_match(palette1, palette2):
 
     return total_score / total_weight if total_weight > 0 else 0
 
-def find_banners_for_avatar(avatar_palette, banners_folder):
+def find_banners_for_avatar(avatar_palette, uploaded_banners):
     matches = []
-    supported = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
 
-    if not os.path.exists(banners_folder):
-        return []
-
-    files = [f for f in os.listdir(banners_folder) if f.lower().endswith(supported)]
-
-    st.session_state.gif_count = 0
-
-    for file in files:
-        path = os.path.join(banners_folder, file)
+    for uploaded_banner in uploaded_banners:
         try:
-            banner = Image.open(path)
-            banner = handle_animated_image(banner, file)
+            banner = Image.open(uploaded_banner)
+            banner = handle_animated_image(banner, uploaded_banner.name)
             banner_palette = get_weighted_palette(banner)
 
             if banner_palette:
                 score = enhanced_palette_match(avatar_palette, banner_palette)
 
                 matches.append({
-                    'path': path,
+                    'filename': uploaded_banner.name,
                     'score': score,
-                    'filename': file,
                     'image': banner
                 })
         except:
@@ -155,24 +143,9 @@ def find_banners_for_avatar(avatar_palette, banners_folder):
     matches.sort(key=lambda x: x['score'], reverse=True)
     return matches
 
-def save_combo(avatar, banner, banners_folder, avatar_filename):
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    avatar_name = os.path.splitext(avatar_filename)[0]
-    banner_name = os.path.splitext(os.path.basename(banner.filename))[0] if hasattr(banner, 'filename') else "banner"
-    folder_name = f"{avatar_name}_{banner_name}_{timestamp}"
-    output_folder = os.path.join(banners_folder, folder_name)
-
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    avatar.save(os.path.join(output_folder, "avatar.png"))
-    banner.save(os.path.join(output_folder, "banner.png"))
-
-    return output_folder
-
 st.title("🎨 مطابقة الأفاتار مع البنرات")
 
-st.markdown("### 📤 ارفع أفاتارك")
+st.markdown("### 📤 1. ارفع أفاتارك")
 
 uploaded_avatar = st.file_uploader(
     "أضف الأفاتار",
@@ -182,8 +155,6 @@ uploaded_avatar = st.file_uploader(
 )
 
 if uploaded_avatar:
-    st.session_state.gif_warning_shown = False
-    
     avatar = Image.open(uploaded_avatar)
     avatar = handle_animated_image(avatar, "الأفاتار")
     avatar_palette = get_weighted_palette(avatar)
@@ -200,21 +171,24 @@ if uploaded_avatar:
             """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("### 📁 مسار مجلد البنرات")
+    st.markdown("### 📤 2. اختر البنرات")
 
-    banners_folder = st.text_input(
-        "مسار مجلد البنرات",
-        placeholder="مثال: C:/Users/اسم المستخدم/Pictures/banners",
+    uploaded_banners = st.file_uploader(
+        "اختر البنرات (يمكنك اختيار عدة صور)",
+        type=["png", "jpg", "jpeg", "webp", "gif"],
+        accept_multiple_files=True,
+        help="اختر كل البنرات اللي تبغى المقارنة بينها",
         label_visibility="collapsed"
     )
 
-    if banners_folder:
-        with st.spinner("جاري البحث عن بنرات مناسبة..."):
+    if uploaded_banners:
+        with st.spinner("جاري المقارنة..."):
             time.sleep(0.5)
-            banner_matches = find_banners_for_avatar(avatar_palette, banners_folder)
+            banner_matches = find_banners_for_avatar(avatar_palette, uploaded_banners)
         
         if st.session_state.gif_count > 0:
             st.info(f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
+            st.session_state.gif_count = 0
 
         if banner_matches:
             st.markdown("---")
@@ -226,14 +200,8 @@ if uploaded_avatar:
                     st.image(match['image'], use_container_width=True)
                     st.caption(f"📄 {match['filename']}")
                     st.caption(f"⭐ التناسق: {match['score']:.1f}%")
-
-                    if st.button(f"💾 حفظ", key=f"save_{i}"):
-                        folder = save_combo(
-                            avatar,
-                            match['image'],
-                            banners_folder,
-                            uploaded_avatar.name
-                        )
-                        st.success(f"✅ تم الحفظ في:\n`{folder}`")
         else:
-            st.error("❌ لم يتم العثور على بنرات في المسار المحدد")
+            st.error("❌ لم يتم العثور على بنرات متناسقة")
+
+elif st.session_state.get('gif_count', 0) > 0:
+    st.session_state.gif_count = 0
