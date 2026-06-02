@@ -16,6 +16,8 @@ st.set_page_config(layout="wide", page_title="مطابقة الأفاتار مع
 
 if 'gif_count' not in st.session_state:
     st.session_state.gif_count = 0
+if 'uploaded_banners' not in st.session_state:
+    st.session_state.uploaded_banners = None
 
 def handle_animated_image(image, image_type="الصورة"):
     try:
@@ -143,7 +145,8 @@ uploaded_avatar = st.file_uploader(
     "أضف الأفاتار",
     type=["png", "jpg", "jpeg", "webp", "jfif"],
     help="اختر صورة الأفاتار من جهازك",
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    key="avatar_uploader"
 )
 
 if uploaded_avatar:
@@ -161,6 +164,11 @@ if uploaded_avatar:
                 <div style="background:{rgb_to_hex(color)}; height:30px; border-radius:5px; margin-bottom:5px;"></div>
                 {rgb_to_hex(color)} — {pct * 100:.1f}%
             """, unsafe_allow_html=True)
+    
+    # زر حذف الأفاتار
+    if st.button("🗑️ حذف الأفاتار", use_container_width=True):
+        st.session_state['avatar_deleted'] = True
+        st.rerun()
 
     st.markdown("---")
     st.markdown("### 📤 2. اختر البنرات")
@@ -170,7 +178,8 @@ if uploaded_avatar:
         type=["png", "jpg", "jpeg", "webp", "gif"],
         accept_multiple_files=True,
         help="اختر كل البنرات اللي تبغى المقارنة بينها",
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="banners_uploader"
     )
 
     if uploaded_banners:
@@ -204,3 +213,8 @@ if uploaded_avatar:
                         st.caption(f"⭐ التناسق: {match['score']:.1f}%")
             else:
                 st.error("❌ لم يتم العثور على بنرات متناسقة")
+
+# إذا تم حذف الأفاتار، نمسحه من الجلسة
+if st.session_state.get('avatar_deleted', False):
+    st.session_state['avatar_deleted'] = False
+    st.rerun()
