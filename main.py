@@ -109,10 +109,14 @@ def enhanced_palette_match(palette1, palette2):
 
     return total_score / total_weight if total_weight > 0 else 0
 
-def find_banners_for_avatar(avatar_palette, uploaded_banners):
+def find_banners_for_avatar(avatar_palette, uploaded_banners, progress_bar, status_text):
     matches = []
+    total = len(uploaded_banners)
 
-    for uploaded_banner in uploaded_banners:
+    for i, uploaded_banner in enumerate(uploaded_banners):
+        status_text.text(f"جاري تحليل البنر {i+1} من {total}: {uploaded_banner.name}")
+        progress_bar.progress((i + 1) / total)
+        
         try:
             banner = Image.open(uploaded_banner)
             banner = handle_animated_image(banner, uploaded_banner.name)
@@ -129,7 +133,6 @@ def find_banners_for_avatar(avatar_palette, uploaded_banners):
         except:
             continue
 
-    matches.sort(key=lambda x: x['score'], reverse=True)
     return matches
 
 st.title("🎨 مطابقة الأفاتار مع البنرات")
@@ -176,9 +179,14 @@ if uploaded_avatar:
         st.markdown("---")
         
         if st.button("🔍 ابدأ البحث عن البنر المناسب", use_container_width=True, type="primary"):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
             with st.spinner("جاري المقارنة..."):
-                time.sleep(0.5)
-                banner_matches = find_banners_for_avatar(avatar_palette, uploaded_banners)
+                banner_matches = find_banners_for_avatar(avatar_palette, uploaded_banners, progress_bar, status_text)
+            
+            progress_bar.empty()
+            status_text.empty()
             
             if st.session_state.gif_count > 0:
                 st.info(f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) - تم استخدام أول إطار فقط للمقارنة")
@@ -196,6 +204,3 @@ if uploaded_avatar:
                         st.caption(f"⭐ التناسق: {match['score']:.1f}%")
             else:
                 st.error("❌ لم يتم العثور على بنرات متناسقة")
-
-elif st.session_state.get('gif_count', 0) > 0:
-    st.session_state.gif_count = 0
