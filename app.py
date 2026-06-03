@@ -62,13 +62,20 @@ def process_banners(
 
             score = match_palettes(avatar_palette, banner_palette)
             harmony = get_harmony_colors(avatar_palette, banner_palette)
+
+            # عرض أول إطار لو GIF، وإلا الصورة مباشرة
+            display_img = banner[0] if isinstance(banner, list) else banner
+
             matches.append({
                 'filename': file.name,
                 'score':    score,
-                'image':    banner.copy(),
+                'image':    display_img.copy(),
                 'harmony':  harmony,
             })
-            banner.close()
+
+            # إغلاق الصورة بشكل صحيح (list ما عندها close)
+            if not isinstance(banner, list):
+                banner.close()
 
         except Exception as e:
             st.warning(f"تعذر معالجة '{file.name}': {e}")
