@@ -13,7 +13,7 @@ from image_utils import get_palette, handle_animated_image, rgb_to_hex
 
 # ============= إعدادات =============
 
-MAX_BANNERS = 50
+MAX_BANNERS = 400
 
 st.set_page_config(
     layout="wide",
