@@ -2,7 +2,7 @@
 app.py
 ------
 واجهة Streamlit — تستورد من color_engine و image_utils فقط.
-لا يوجد أي منطق خوارزمي هنا.
+الكاشينج: البنرات تتحلل مرة وحدة وتبقى حتى لو تغير الأفاتار.
 """
 
 import streamlit as st
@@ -29,58 +29,86 @@ if 'uploader_key' not in st.session_state:
 if 'gif_count' not in st.session_state:
     st.session_state.gif_count = 0
 
+if 'gif_frames' not in st.session_state:
+    st.session_state.gif_frames = 0
+
+# الكاش: باليتات البنرات المحللة مسبقاً
+# { filename: { 'palette': [...], 'image': Image, 'is_gif': bool } }
+if 'banners_cache' not in st.session_state:
+    st.session_state.banners_cache = {}
+
 # ============= دوال المعالجة =============
 
-def process_banners(
-    avatar_palette: list,
-    uploaded_banners: list,
-    progress_bar,
-    status_text,
-) -> list[dict]:
+def analyze_banners(uploaded_banners: list, progress_bar, status_text) -> None:
     """
-    تحليل كل بنر ومقارنته بباليتة الأفاتار.
-    الإرجاع: قائمة من {'filename', 'score', 'image'}
+    تحليل البنرات الجديدة فقط (غير الموجودة في الكاش) وحفظ باليتاتها.
+    البنرات المحللة مسبقاً تُتجاهل.
     """
-    matches = []
-    total   = len(uploaded_banners)
+    cache    = st.session_state.banners_cache
+    new_only = [f for f in uploaded_banners if f.name not in cache]
+    total    = len(new_only)
 
-    for i, file in enumerate(uploaded_banners):
-        status_text.text(f"جاري تحليل البنر {i + 1} من {total}: {file.name}")
-        progress_bar.progress((i + 1) / total)
+    if total == 0:
+        status_text.text("✅ كل البنرات محللة مسبقاً")
+        progress_bar.progress(1.0)
+        return
+
+    for i, file in enumerate(new_only):
+        status_text.text(f"جاري تحليل البنر {i+1} من {total}: {file.name}")
+        progress_bar.progress((i+1) / total)
 
         try:
             banner, is_animated = handle_animated_image(Image.open(file))
 
             if is_animated:
-                frame_count = len(banner) if isinstance(banner, list) else 1
-                st.session_state.gif_count += 1
-                st.session_state.gif_frames = st.session_state.get('gif_frames', 0) + frame_count
+                frames = len(banner) if isinstance(banner, list) else 1
+                st.session_state.gif_count  += 1
+                st.session_state.gif_frames += frames
 
             banner_palette = get_palette(banner)
             if not banner_palette:
                 continue
 
-            score = match_palettes(avatar_palette, banner_palette)
-            harmony = get_harmony_colors(avatar_palette, banner_palette)
-
-            # عرض أول إطار لو GIF، وإلا الصورة مباشرة
             display_img = banner[0] if isinstance(banner, list) else banner
 
-            matches.append({
-                'filename': file.name,
-                'score':    score,
+            cache[file.name] = {
+                'palette':  banner_palette,
                 'image':    display_img.copy(),
-                'harmony':  harmony,
-            })
+                'is_gif':   is_animated,
+            }
 
-            # إغلاق الصورة بشكل صحيح (list ما عندها close)
             if not isinstance(banner, list):
                 banner.close()
 
         except Exception as e:
             st.warning(f"تعذر معالجة '{file.name}': {e}")
 
-    return matches
+
+def compute_scores(avatar_palette: list, uploaded_banners: list) -> list:
+    """
+    حساب درجات التناسق فقط — البنرات محللة مسبقاً في الكاش.
+    سريع جداً لأنه لا يفتح أي صورة.
+    """
+    cache   = st.session_state.banners_cache
+    results = []
+
+    for file in uploaded_banners:
+        cached = cache.get(file.name)
+        if not cached:
+            continue
+
+        score   = match_palettes(avatar_palette, cached['palette'])
+        harmony = get_harmony_colors(avatar_palette, cached['palette'])
+
+        results.append({
+            'filename': file.name,
+            'score':    score,
+            'image':    cached['image'],
+            'harmony':  harmony,
+        })
+
+    results.sort(key=lambda x: x['score'], reverse=True)
+    return results
 
 
 def show_palette(palette: list) -> None:
@@ -100,22 +128,16 @@ def show_results(matches: list) -> None:
         st.error("❌ لم يتم العثور على بنرات")
         return
 
-    matches.sort(key=lambda x: x['score'], reverse=True)
-
     st.markdown("### 🏆 أفضل البنرات المتناسقة")
+    _show_grid(matches[:6])
 
-    top   = matches[:6]
-    rest  = matches[6:]
-
-    _show_grid(top)
-
-    if rest:
-        with st.expander(f"عرض باقي النتائج ({len(rest)} بنر)"):
-            _show_grid(rest)
+    if len(matches) > 6:
+        with st.expander(f"عرض باقي النتائج ({len(matches) - 6} بنر)"):
+            _show_grid(matches[6:])
 
 
 def _show_grid(items: list) -> None:
-    """عرض قائمة بنرات في شبكة 3 أعمدة مع ألوان التناسق"""
+    """عرض شبكة 3 أعمدة مع ألوان التناسق"""
     cols = st.columns(3)
     for i, match in enumerate(items):
         with cols[i % 3]:
@@ -123,14 +145,11 @@ def _show_grid(items: list) -> None:
             st.caption(f"📄 {match['filename']}")
             st.caption(f"⭐ التناسق: {match['score']:.1f}%")
 
-            # ألوان التناسق
             if match.get('harmony'):
                 swatches = "".join(
-                    f'<span title="{h}" style="'
-                    f'display:inline-block; width:28px; height:28px;'
-                    f'background:{h}; border-radius:50%; margin:2px;'
-                    f'border:2px solid #fff; box-shadow:0 0 3px #0003;'
-                    f'"></span>'
+                    f'<span title="{h}" style="display:inline-block;width:28px;height:28px;'
+                    f'background:{h};border-radius:50%;margin:2px;border:2px solid #fff;'
+                    f'box-shadow:0 0 3px #0003;"></span>'
                     for h in match['harmony']
                 )
                 labels = " ".join(
@@ -148,8 +167,59 @@ def _show_grid(items: list) -> None:
 
 st.title("🎨 مطابقة الأفاتار مع البنرات")
 
+# --- رفع البنرات أولاً ---
+st.markdown("### 📤 1. اختر البنرات")
+
+uploaded_banners = st.file_uploader(
+    "اختر البنرات",
+    type=["png", "jpg", "jpeg", "webp", "gif"],
+    accept_multiple_files=True,
+    label_visibility="collapsed",
+    key="banners_uploader",
+)
+
+if uploaded_banners:
+    if len(uploaded_banners) > MAX_BANNERS:
+        st.warning(f"⚠️ الحد الأقصى {MAX_BANNERS} بنر — سيتم تحليل أول {MAX_BANNERS} فقط")
+        uploaded_banners = uploaded_banners[:MAX_BANNERS]
+
+    # عدد البنرات الجديدة (غير محللة)
+    cache     = st.session_state.banners_cache
+    new_count = sum(1 for f in uploaded_banners if f.name not in cache)
+
+    if new_count > 0:
+        st.info(f"📊 {len(uploaded_banners)} بنر — {new_count} جديد يحتاج تحليل، {len(uploaded_banners) - new_count} محلل مسبقاً")
+    else:
+        st.success(f"✅ {len(uploaded_banners)} بنر — كلهم محللون مسبقاً ⚡")
+
+    if new_count > 0:
+        if st.button("⚙️ حلل البنرات", use_container_width=True):
+            st.session_state.gif_count  = 0
+            st.session_state.gif_frames = 0
+            progress_bar = st.progress(0)
+            status_text  = st.empty()
+
+            analyze_banners(uploaded_banners, progress_bar, status_text)
+
+            progress_bar.empty()
+            status_text.empty()
+
+            if st.session_state.gif_count > 0:
+                st.info(
+                    f"ℹ️ تم العثور على {st.session_state.gif_count} GIF "
+                    f"— تم تحليل {st.session_state.gif_frames} إطار إجمالاً"
+                )
+
+    # زر مسح الكاش
+    if cache:
+        if st.button("🗑️ مسح كاش البنرات", help="يجبر التطبيق على إعادة تحليل كل البنرات"):
+            st.session_state.banners_cache = {}
+            st.rerun()
+
+st.markdown("---")
+
 # --- رفع الأفاتار ---
-st.markdown("### 📤 1. ارفع أفاتارك")
+st.markdown("### 📤 2. ارفع أفاتارك")
 
 uploaded_avatar = st.file_uploader(
     "أضف الأفاتار",
@@ -159,18 +229,15 @@ uploaded_avatar = st.file_uploader(
 )
 
 if uploaded_avatar:
-    avatar_raw               = Image.open(uploaded_avatar)
-    avatar, avatar_animated  = handle_animated_image(avatar_raw)
-    avatar_palette           = get_palette(avatar)
+    avatar, avatar_animated = handle_animated_image(Image.open(uploaded_avatar))
+    avatar_palette          = get_palette(avatar)
+    display_img             = avatar[0] if isinstance(avatar, list) else avatar
 
     col1, col2 = st.columns([1, 1])
     with col1:
-        # عرض الأفاتار — لو GIF نعرض أول إطار
-        display_img = avatar[0] if isinstance(avatar, list) else avatar
         st.image(display_img, width=200)
         if avatar_animated:
-            frame_count = len(avatar)
-            st.caption(f"🎞️ GIF — تم تحليل {frame_count} إطار")
+            st.caption(f"🎞️ GIF — تم تحليل {len(avatar)} إطار")
     with col2:
         st.markdown("**🎨 ألوان الأفاتار:**")
         show_palette(avatar_palette)
@@ -181,48 +248,16 @@ if uploaded_avatar:
 
     st.markdown("---")
 
-    # --- رفع البنرات ---
-    st.markdown("### 📤 2. اختر البنرات")
+    # --- ابدأ البحث ---
+    cache = st.session_state.banners_cache
+    ready = uploaded_banners and all(f.name in cache for f in uploaded_banners)
 
-    uploaded_banners = st.file_uploader(
-        "اختر البنرات",
-        type=["png", "jpg", "jpeg", "webp", "gif"],
-        accept_multiple_files=True,
-        label_visibility="collapsed",
-        key=f"banners_{st.session_state.uploader_key}",
-    )
-
-    if uploaded_banners:
-        if len(uploaded_banners) > MAX_BANNERS:
-            st.warning(f"⚠️ الحد الأقصى {MAX_BANNERS} بنر — سيتم تحليل أول {MAX_BANNERS} فقط")
-            uploaded_banners = uploaded_banners[:MAX_BANNERS]
-
-        st.success(f"✅ تم إضافة {len(uploaded_banners)} بنر")
-        st.markdown("---")
-
+    if not uploaded_banners:
+        st.warning("⚠️ أضف البنرات أولاً")
+    elif not ready:
+        st.warning("⚠️ اضغط 'حلل البنرات' أولاً")
+    else:
         if st.button("🔍 ابدأ البحث", use_container_width=True, type="primary"):
-            st.session_state.gif_count = 0
-
-            progress_bar = st.progress(0)
-            status_text  = st.empty()
-
-            with st.spinner("جاري المقارنة..."):
-                results = process_banners(
-                    avatar_palette,
-                    uploaded_banners,
-                    progress_bar,
-                    status_text,
-                )
-
-            progress_bar.empty()
-            status_text.empty()
-
-            if st.session_state.gif_count > 0:
-                total_frames = st.session_state.get('gif_frames', 0)
-                st.info(
-                    f"ℹ️ تم العثور على {st.session_state.gif_count} صورة متحركة (GIF) "
-                    f"— تم تحليل {total_frames} إطار إجمالاً (كل 5 إطارات)"
-                )
-                st.session_state.gif_frames = 0
-
+            with st.spinner("جاري حساب التناسق..."):
+                results = compute_scores(avatar_palette, uploaded_banners)
             show_results(results)
